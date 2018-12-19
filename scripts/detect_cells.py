@@ -171,7 +171,7 @@ def detect_cells_in_chunk(paired_file, save_path_c, threshold, templates, erosio
     os.remove(paired_file[0])
     os.remove(paired_file[1])
         
-def detect_cells(rmt, config):
+def detect_cells(rmt, config, anno_path):
 
     shared_params=config['shared']
     params=config['cell_detection']
@@ -186,24 +186,21 @@ def detect_cells(rmt, config):
     verbose = 0
     path_to_templates = './entangl_templates/'
 
-    max_val_ = get_max_intensity(chunks)
-    paired_files = get_paired_files(chunks)
-    templates = read_templates(path_to_templates)
-
-    x = Parallel(n_jobs=jobs, max_nbytes=1e6, temp_folder=chunks, verbose=verbose)(delayed(detect_cells_in_chunk)(i, csv_path, threshold, templates, save_path_f=feature_path, erosion_radius=erosion_radius, max_val=max_val_, verbose=verbose) for i in tqdm(paired_files, desc='detecting cells...'))
-    
-    centroids = get_cells_from_csv(csv_path)
-#    centroids_t = prune_clusters(centroids[:,:3], verbose=verbose)
-#    atlas = tf.imread('../ara_annotation_10um.tif')
-#    labels = []
-#    for i in centroids_t:
-#        labels.append(atlas[int(i[0]),int(i[1]),int(i[2])])
+#    max_val_ = get_max_intensity(chunks)
+#    paired_files = get_paired_files(chunks)
+#    templates = read_templates(path_to_templates)
 #
-#     labels = np.squeeze(centroids[:,-1])
-#     print(labels[:,None].shape)
-#     print(centroids_t.shape)
-#     centroids_tc = np.concatenate((centroids_t, labels[:,None]),axis=1)
-#    write_list_to_csv(centroids_t, csv_path.replace('cells','cells_pruned'), open_mode='w')
-    boss_util.save_boss_json(shared_params['collection'], shared_params['experiment'], params['channel'], csv_path, json_path) 
+#    x = Parallel(n_jobs=jobs, max_nbytes=1e6, temp_folder=chunks, verbose=verbose)(delayed(detect_cells_in_chunk)(i, csv_path, threshold, templates, save_path_f=feature_path, erosion_radius=erosion_radius, max_val=max_val_, verbose=verbose) for i in tqdm(paired_files, desc='detecting cells...'))
+#    
+    centroids = get_cells_from_csv(csv_path)
+    centroids_t = prune_clusters(centroids[:,:3], verbose=verbose)
+    atlas = tf.imread(anno_path)
+    labels = []
+    for i in tqdm(centroids_t, desc='getting labels for cells'):
+        labels.append(atlas[int(i[2]),int(i[1]),int(i[0])])
+    labels = np.squeeze(centroids[:,-1])
+    centroids_tc = np.concatenate((centroids_t, labels[:,None]),axis=1)
+    write_list_to_csv(centroids_tc, csv_path, open_mode='w')
+    boss_util.save_cell_detection_json(shared_params['collection'], shared_params['experiment'], params['channel'], csv_path, json_path) 
     return json_path
 

@@ -81,7 +81,7 @@ def generate_labeled_cells_json(cells, labels, voxel_size,linked_layer='atlas'):
             'id': str(counter),
             'point': [float(k) for k in i],
             'segments': [
-                str(j)
+                str(int(float(j)))
             ]
         }
         counter+=1
@@ -114,13 +114,12 @@ def generate_cells_json(cells, voxel_size):
     }
     return cells_layer
 
-def generate_labeled_boss_json(coll, exp, chan, tp, fp, tp_labels, fp_labels, linked_layer="atlas"):
+def generate_labeled_boss_json(coll, exp, chan, cells, labels, linked_layer="atlas"):
     url = 'boss://https://api.boss.neurodata.io/{}/{}/{}?window=0,3000'.format(coll, exp, chan)
     url2 = 'boss://https://api.boss.neurodata.io/{}/{}/{}'.format(coll, exp, 'atlas_50umreg')
 #     reader = csv.reader(open(path_to_csv))
     voxel_size = [5160,5160,5160]
-    tp_layer = generate_cells_json(tp, tp_labels, voxel_size, linked_layer=linked_layer)
-    fp_layer = generate_cells_json(fp, fp_labels, voxel_size, linked_layer=linked_layer)
+    cells_layer = generate_labeled_cells_json(cells, labels, voxel_size, linked_layer=linked_layer)
     exp_json = {
         "layers": {
             chan: {
@@ -133,8 +132,7 @@ def generate_labeled_boss_json(coll, exp, chan, tp, fp, tp_labels, fp_labels, li
               "type": "segmentation",
               "blend": "additive"
             },
-            "true_positives": tp_layer,
-            "false_positives": fp_layer
+            "detected_cells": cells_layer
             
         },
         "navigation": {
@@ -186,6 +184,10 @@ def generate_boss_json(coll, exp, chan, cells, linked_layer="atlas"):
     }
     return exp_json
 
+def save_cell_detection_json(coll, exp, chan, csv_file, save_path):
+    cells = get_cells_from_csv(csv_file)
+    exp_json = generate_labeled_boss_json(coll, exp, chan, cells[:,:3][:,::-1], cells[:,-1])
+    json.dump(exp_json, open(save_path, 'w'), indent=4)
 def save_boss_json(coll, exp, chan, csv_file, save_path):
     cells = get_cells_from_csv(csv_file)
     exp_json = generate_boss_json(coll, exp, chan, cells[:,::-1])
@@ -428,4 +430,4 @@ def get_viz_link(data):
     url = 'https://viz.neurodata.io/?json_url='
     json_url = 'https://json.neurodata.io/v1'
     r = requests.post(json_url,json=data)
-    return url + r['uri']
+    return url + r.json()['uri']

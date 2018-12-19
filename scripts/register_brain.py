@@ -37,6 +37,9 @@ def register_data(rmt, config):
     # download image
     params = config['registration']
     shared_params = config['shared']
+    coll = shared_params['collection']
+    exp = shared_params['experiment']
+    chan = params['channel']
     # resolution level from 0-6
     if params['modality'].lower() == 'colm': 
         resolution_image = 3
@@ -102,11 +105,6 @@ def register_data(rmt, config):
     z_size = meta[2][1]
     size = (x_size, y_size, z_size)
     # need to reorient size to match atlas
-    # i am hard coding the size assuming
-    # the image is oriented LPS
-#    size_r = (y_size, z_size, x_size)
-    # this size is hardocoded assuming
-    # input image is IPL (atlas is PIR)
     size_r = reorient_size(size, params['orientation'],atlas_orientation)
 
     print("applying affine transformation to atlas labels")
@@ -130,6 +128,8 @@ def register_data(rmt, config):
     anno = sitk.GetArrayFromImage(img_lddmm_r)
     if anno.dtype != 'uint64':
         anno = anno.astype('uint64')
-    upload_to_boss(rmt, anno, ch_rsc_anno)
-    return anno_channel
+#    upload_to_boss(rmt, anno, ch_rsc_anno)
+    anno_path = './process_folder/{}_{}.tiff'.format(exp, anno_channel)
+    tf.imsave(anno_path, data=anno)
+    return generate_registration_json(shared_params['collection'],shared_params['experiment'],params['channel'],(np.array(meta[-1])*mm_to_um).tolist()), anno_path
 
