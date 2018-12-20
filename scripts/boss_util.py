@@ -184,6 +184,38 @@ def generate_boss_json(coll, exp, chan, cells, linked_layer="atlas"):
     }
     return exp_json
 
+def generate_registration_json(coll,exp,chan,voxel_size=[5160]*3,):
+    url = 'boss://https://api.boss.neurodata.io/{}/{}/{}?window=0,5000'.format(coll, exp, chan)
+    atlas_channel = 'atlas_50umreg'
+    url2 = 'boss://https://api.boss.neurodata.io/{}/{}/{}'.format(coll, exp, atlas_channel)
+    exp_json = {
+        "layers": {
+            chan: {
+              "source": url,
+              "type": "image",
+              "blend": "additive"
+            },
+            atlas_channel: {
+              "source": url2,
+              "type": "segmentation",
+              "blend": "additive"
+            }
+
+        },
+        "navigation": {
+            "pose": {
+                "voxelSize": voxel_size,
+                "voxelCoordinates": [
+                  1144.7791748046875,
+                  1278.600830078125,
+                  751.5
+                ]
+            }
+        },
+        "perspectiveZoom": 4.779898969674949
+    }
+    return exp_json
+
 def save_cell_detection_json(coll, exp, chan, csv_file, save_path):
     cells = get_cells_from_csv(csv_file)
     exp_json = generate_labeled_boss_json(coll, exp, chan, cells[:,:3][:,::-1], cells[:,-1])
