@@ -1,3 +1,6 @@
 [submodule "scripts/nd-multicore"]
 	path = scripts/nd-multicore
 	url = git@github.com:neurodata-cobalt/nd-multicore.git
+[submodule "scripts/ndmulticore"]
+	path = scripts/ndmulticore
+	url = git@github.com:neurodata-cobalt/ndmulticore.git
