@@ -9,6 +9,7 @@ import time
 from downsample.startDownsample import *
 from boss_util import *
 import datetime
+import configparser
 
 def correct_bias(rmt, config, scale=0.1):
     t_start_overall = time.time()
@@ -19,11 +20,13 @@ def correct_bias(rmt, config, scale=0.1):
     params = config['preprocessing']
     shared_params = config['shared']
     channels = params['channels']
+    if channels == ',' or  channels == "":
+        return
     perms = config['permissions']
 
 
     # resolution level from 0-5
-    resolution_image = 3
+    resolution_image = 0
     image_isotropic = True
 
     for channel in channels.split(','):
@@ -50,3 +53,12 @@ def correct_bias(rmt, config, scale=0.1):
                                               shared_params['collection'], shared_params['experiment'], new_channel)
         makeDownsampleRequest(url, config['Default']['token'])
 
+def main():
+    config = sys.argv[1]
+    config_p = configparser.ConfigParser()
+    config_p.read(config)
+    rmt = BossRemote(config)
+    correct_bias(rmt, config_p)
+
+if __name__ == "__main__":
+    main()

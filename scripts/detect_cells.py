@@ -1,3 +1,7 @@
+from intern.remote.boss import BossRemote
+import configparser
+import sys
+import glob
 from sklearn import cluster
 import numpy as np
 from tqdm import tqdm
@@ -101,9 +105,9 @@ def get_detections(feature_map, atlas, identifier, threshold, erosion_radius=30,
         p = list(i.centroid)
         centroids.append(p)
     if len(centroids) is 0: return centroids
-#    elif len(centroids) is 1:
-#        centroids = np.array(centroids).reshape(1,-1)
-    centroids = prune_clusters(centroids)
+    elif len(centroids) is 1:
+        centroids = np.array(centroids).reshape(1,-1)
+#    centroids = prune_clusters(centroids)
     centroids_new = []
     for i in centroids:
         p = [i[0], i[1], i[2], np.squeeze(atlas[int(i[0]),int(i[1]),int(i[2])])]
@@ -114,11 +118,11 @@ def get_detections(feature_map, atlas, identifier, threshold, erosion_radius=30,
 def get_paired_files(path_to_chunks):
     # get centroids over whole dataset
     # threshold = 1.0
+    f = np.sort(glob.glob('{}/z*.tif*'.format(path_to_chunks)))
+    #print(f)
     files = []
-    for i in np.sort(os.listdir(path_to_chunks)):
-        if i.endswith('.tif') or i.endswith('.tiff'):
-            files.append(path_to_chunks + i)
-        else: continue
+    for i in f:
+        files.append(i)
     paired_files = [files[i:i+2] for i in range(0,len(files)-1,2)]
     return np.array(paired_files)
     
@@ -128,9 +132,9 @@ def get_max_intensity(path_to_chunks, verbose=False):
     files = os.listdir(path_to_chunks)
     files = [f for f in files if f.endswith('.tif') or f.endswith('.tiff')]
     for i in tqdm(files, desc='finding max intensity over all chunks'):
+        if img.dtype == 'uint64': continue
         if verbose: print('processing {}'.format(i))
         img = tf.imread(path_to_chunks + i)
-        if img.dtype == 'uint64': continue
         if max_val < img.max() < 2**16:
             max_val = img.max()
             if verbose: print("maximum value found in chunk {}".format(i))
@@ -142,7 +146,7 @@ def prune_clusters(centroids, bandwidth=15, verbose=False):
         print('{} centroids before.\n{} centroids after clustering.'.format(len(centroids), len(clust.cluster_centers_)))
     return clust.cluster_centers_
 
-def detect_cells_in_chunk(paired_file, save_path_c, threshold, templates, erosion_radius=30, max_val=54908,save_path_f=None, verbose=False):
+def detect_cells_in_chunk(paired_file, save_path_c, threshold, templates, erosion_radius=30, max_val=54908,save_path_f=None, verbose=False, del_files=True):
     if verbose: 
         print('path_to_image: {}'.format(paired_file[0]))
         print('path_to_atlas: {}'.format(paired_file[1]))
@@ -164,43 +168,70 @@ def detect_cells_in_chunk(paired_file, save_path_c, threshold, templates, erosio
         feature_map = match_templates(chunk, identifier, templates, save_path=save_path_f)
         centroids = get_detections(feature_map, atlas, identifier=identifier, threshold=threshold, erosion_radius=erosion_radius, verbose=verbose)
         if len(centroids) == 0: 
-            return
-        # remember that c[3] is the label associated with a centroid
-        centroids = [[c[0] + z_start, c[1] + y_start, c[2] + x_start, c[3]] for c in centroids]
-        write_list_to_csv(centroids, save_path_c, open_mode='a')
-    os.remove(paired_file[0])
-    os.remove(paired_file[1])
+            pass
+        else:
+            # remember that c[3] is the label associated with a centroid
+            centroids = [[c[0] + z_start, c[1] + y_start, c[2] + x_start, c[3]] for c in centroids]
+            write_list_to_csv(centroids, save_path_c, open_mode='a')
+    if del_files:
+        os.remove(paired_file[0])
+        os.remove(paired_file[1])
+
+def get_label(point, atlas):
+    pt = [int(i) for i in point]
+    label = atlas[p2[2],p2[1],p2[0]]
+    return label
+
+def get_labels_for_cells(centroids,atlas):
+    labels = []
+    voxels = [[int(i) for i in c] for c in centroids]
+    for i in centroids:
+        labels.append(get_label(i,atlas))
+    return labels
+
         
-def detect_cells(rmt, config, anno_path):
+def detect_cells(rmt, config):
 
     shared_params=config['shared']
     params=config['cell_detection']
     
     chunks = './process_folder/'
-    csv_path = './{}_{}_{}_detected_cells.csv'.format(shared_params['collection'],shared_params['experiment'],params['channel'])
-    json_path = './{}_{}_{}_detected_cells.json'.format(shared_params['collection'],shared_params['experiment'],params['channel'])
+    csv_path = './process_folder/{}_{}_{}_detected_cells.csv'.format(shared_params['collection'],shared_params['experiment'],params['channel'])
+    json_path = './process_folder/{}_{}_{}_detected_cells.json'.format(shared_params['collection'],shared_params['experiment'],params['channel'])
     feature_path = None
     threshold = 1.0
     erosion_radius = 30
-    jobs = 10
+    jobs = 16
     verbose = 0
     path_to_templates = './entangl_templates/'
 
-#    max_val_ = get_max_intensity(chunks)
-#    paired_files = get_paired_files(chunks)
-#    templates = read_templates(path_to_templates)
-#
-#    x = Parallel(n_jobs=jobs, max_nbytes=1e6, temp_folder=chunks, verbose=verbose)(delayed(detect_cells_in_chunk)(i, csv_path, threshold, templates, save_path_f=feature_path, erosion_radius=erosion_radius, max_val=max_val_, verbose=verbose) for i in tqdm(paired_files, desc='detecting cells...'))
-#    
+    max_val_ = get_max_intensity(chunks)
+    paired_files = get_paired_files(chunks)
+    templates = read_templates(path_to_templates)
+
+    x = Parallel(n_jobs=jobs, max_nbytes=1e6, temp_folder=chunks, verbose=verbose)(delayed(detect_cells_in_chunk)(i, csv_path, threshold, templates, save_path_f=feature_path, erosion_radius=erosion_radius, max_val=max_val_, verbose=verbose) for i in tqdm(paired_files, desc='detecting cells...'))
+    
     centroids = get_cells_from_csv(csv_path)
     centroids_t = prune_clusters(centroids[:,:3], verbose=verbose)
-    atlas = tf.imread(anno_path)
-    labels = []
-    for i in tqdm(centroids_t, desc='getting labels for cells'):
-        labels.append(atlas[int(i[2]),int(i[1]),int(i[0])])
+    atlas = tf.imread('/run/scripts/ara_annotation_10um.tif')
+    labels = get_labels_for_cells(centroids_t,atlas)
     labels = np.squeeze(centroids[:,-1])
+#    print(labels[:,None].shape)
+#    print(centroids_t.shape)
     centroids_tc = np.concatenate((centroids_t, labels[:,None]),axis=1)
-    write_list_to_csv(centroids_tc, csv_path, open_mode='w')
-    boss_util.save_cell_detection_json(shared_params['collection'], shared_params['experiment'], params['channel'], csv_path, json_path) 
-    return json_path
+    write_list_to_csv(centroids_t, csv_path.replace('cells','cells_pruned'), open_mode='w')
+    boss_util.save_boss_json(shared_params['collection'], shared_params['experiment'], params['channel'], csv_path, json_path) 
+    return boss_util.get_viz_link(json.load(json_path))
 
+def main():
+    config = sys.argv[1]
+    config_p = configparser.ConfigParser()
+    config_p.read(config)
+    rmt = BossRemote(config)
+    viz_link = detect_cells(rmt, config_p)
+    logfile = config_p['Default']['logfile']
+    write_to_logfile('cell_detection viz link: {}'.format(viz_link),logfile)
+
+
+if __name__ == "__main__":
+    main()
