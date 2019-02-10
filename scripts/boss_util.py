@@ -22,7 +22,7 @@ def get_cells_from_csv(path_to_csv):
         reader = csv.reader(f)
         for i in reader:
             try:
-                detected_cells.append([float(i[0]),float(i[1]),float(i[2]),int(i[3])])
+                detected_cells.append([float(i[0]),float(i[1]),float(i[2]),int(float(i[3]))])
             except Exception as e:
                 detected_cells.append([float(i[0]),float(i[1]),float(i[2])])
                 print(e)
@@ -41,6 +41,19 @@ def get_points_from_json(json_file, layer, return_labels=False):
 #        points = [i['point'] for i in state['layers']['detected_cells']['annotations']]
     if return_labels: return points, labels
     else: return points
+
+def get_label(centroid,rmt,coll,exp,chan):
+    width = 1
+    X = int(centroid[2])
+    Y = int(centroid[1])
+    Z = int(centroid[0])
+    x_range = [X, X+width]
+    y_range = [Y, Y+width]
+    z_range = [Z, Z+width]
+    ch_rsc = rmt.get_channel(chan,coll,exp)
+    label = rmt.get_cutout(ch_rsc,0,x_range,y_range,z_range)
+    return np.squeeze(label[0])
+    
 
 def download_annotations(centroids, rmt,collection, experiment, channel, width=5):
     for i in centroids:
@@ -77,7 +90,7 @@ def mask_out_points(path_to_csv,rmt,collection, experiment, channel):
         counter += 1
     return new_points, counter
 
-def generate_labeled_cells_json(cells, labels, voxel_size,linked_layer='atlas'):
+def generate_labeled_cells_json(cells, labels, voxel_size,linked_layer='atlas_50umreg'):
     anno = []
     counter = 0
     for i,j in zip(cells,labels):
@@ -86,7 +99,7 @@ def generate_labeled_cells_json(cells, labels, voxel_size,linked_layer='atlas'):
             'id': str(counter),
             'point': [float(k) for k in i],
             'segments': [
-                str(j)
+                str(int(j))
             ]
         }
         counter+=1
@@ -161,7 +174,7 @@ def generate_boss_json(coll, exp, chan, cells, linked_layer="atlas"):
     url2 = 'boss://https://api.boss.neurodata.io/{}/{}/{}'.format(coll, exp, 'atlas_50umreg')
 #     reader = csv.reader(open(path_to_csv))
     voxel_size = [5160,5160,5160]
-    tp_layer = generate_cells_json(cells, voxel_size)
+    tp_layer = generate_labeled_cells_json(cells[:,:3][:,::-1],cells[:,-1], voxel_size)
     exp_json = {
         "layers": {
             chan: {
@@ -225,8 +238,9 @@ def generate_registration_json(coll,exp,chan,atlas_layer):
 
 
 def save_boss_json(coll, exp, chan, csv_file, save_path):
-    cells = get_cells_from_csv(csv_file)
-    exp_json = generate_boss_json(coll, exp, chan, cells[:,::-1])
+    cells = np.array(get_cells_from_csv(csv_file))
+    print(cells.shape)
+    exp_json = generate_boss_json(coll, exp, chan, cells)
     json.dump(exp_json, open(save_path, 'w'), indent=4)
 
 

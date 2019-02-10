@@ -8,8 +8,8 @@ WORKDIR /run/scripts
 # set the python environment
 RUN echo "export PYTHONPATH=${PYTHONPATH}:/run/ndmulticore" >> start.sh
 # download data to preprocess
-RUN echo "python correct_lavision_bias.py neurodata.cfg" >> start.sh
-RUN echo "python register_brain.py neurodata.cfg" >> start.sh
+#RUN echo "python correct_lavision_bias.py neurodata.cfg" >> start.sh
+#RUN echo "python register_brain.py neurodata.cfg" >> start.sh
 RUN echo "python download_chunks.py" >> start.sh
 RUN echo "python detect_cells.py neurodata.cfg" >> start.sh
 RUN chmod +x start.sh

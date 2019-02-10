@@ -1,3 +1,4 @@
+import json
 from intern.remote.boss import BossRemote
 import configparser
 import sys
@@ -54,7 +55,8 @@ def match_templates(chunk, identifier, templates, pad_width=16, save_path=None):
     feature_map = np.zeros(chunk.shape)
     for template in templates:
         response = fftconvolve(padded_chunk, template, mode="same")[pad_width:-pad_width,pad_width:-pad_width,pad_width:-pad_width]
-        response = suppress_dark_blobs(response)
+#        response = suppress_dark_blobs(response)
+        response = response *  (response > 0)
         # square all responses to emphasize high responses
         response = np.square(response)
         # now convolve responses with ones 
@@ -76,8 +78,8 @@ def match_templates(chunk, identifier, templates, pad_width=16, save_path=None):
 #        return (feature_map - feature_map.min())/(feature_map.max()-feature_map.min())
     return feature_map
 
-def suppress_dark_blobs(feature_map, radius=20):
-    mask = feature_map < 0
+def suppress_dark_blobs(feature_map, radius=10):
+    mask = feature_map <= 0
     mask2 = morphology.binary_dilation(mask, selem=selem.ball(radius))
     return feature_map * np.abs(mask2 - 1)
 
@@ -130,9 +132,8 @@ def get_max_intensity(path_to_chunks, verbose=False):
     # find max intensity over all chunks
     max_val = 0
     files = os.listdir(path_to_chunks)
-    files = [f for f in files if f.endswith('.tif') or f.endswith('.tiff')]
+    files = [f for f in files if f.endswith('.tif') or f.endswith('.tiff') and 'atlas' not in f]
     for i in tqdm(files, desc='finding max intensity over all chunks'):
-        if img.dtype == 'uint64': continue
         if verbose: print('processing {}'.format(i))
         img = tf.imread(path_to_chunks + i)
         if max_val < img.max() < 2**16:
@@ -177,16 +178,11 @@ def detect_cells_in_chunk(paired_file, save_path_c, threshold, templates, erosio
         os.remove(paired_file[0])
         os.remove(paired_file[1])
 
-def get_label(point, atlas):
-    pt = [int(i) for i in point]
-    label = atlas[p2[2],p2[1],p2[0]]
-    return label
-
-def get_labels_for_cells(centroids,atlas):
+def get_labels_for_cells(centroids,rmt,coll,exp,chan):
     labels = []
     voxels = [[int(i) for i in c] for c in centroids]
-    for i in centroids:
-        labels.append(get_label(i,atlas))
+    for i in tqdm(centroids, desc="getting labels for cells"):
+        labels.append(boss_util.get_label(i,rmt,coll,exp,chan))
     return labels
 
         
@@ -194,6 +190,9 @@ def detect_cells(rmt, config):
 
     shared_params=config['shared']
     params=config['cell_detection']
+    coll = shared_params['collection']
+    exp = shared_params['experiment']
+    chan = params['channel']
     
     chunks = './process_folder/'
     csv_path = './process_folder/{}_{}_{}_detected_cells.csv'.format(shared_params['collection'],shared_params['experiment'],params['channel'])
@@ -201,7 +200,7 @@ def detect_cells(rmt, config):
     feature_path = None
     threshold = 1.0
     erosion_radius = 30
-    jobs = 16
+    jobs = 8
     verbose = 0
     path_to_templates = './entangl_templates/'
 
@@ -213,15 +212,14 @@ def detect_cells(rmt, config):
     
     centroids = get_cells_from_csv(csv_path)
     centroids_t = prune_clusters(centroids[:,:3], verbose=verbose)
-    atlas = tf.imread('/run/scripts/ara_annotation_10um.tif')
-    labels = get_labels_for_cells(centroids_t,atlas)
-    labels = np.squeeze(centroids[:,-1])
-#    print(labels[:,None].shape)
-#    print(centroids_t.shape)
+    labels = np.array(get_labels_for_cells(centroids_t,rmt,coll,exp,'atlas_50umreg'))
     centroids_tc = np.concatenate((centroids_t, labels[:,None]),axis=1)
-    write_list_to_csv(centroids_t, csv_path.replace('cells','cells_pruned'), open_mode='w')
-    boss_util.save_boss_json(shared_params['collection'], shared_params['experiment'], params['channel'], csv_path, json_path) 
-    return boss_util.get_viz_link(json.load(json_path))
+    write_list_to_csv(centroids_tc, csv_path.replace('cells','cells_pruned'), open_mode='w')
+    boss_util.save_boss_json(coll, exp, chan, csv_path.replace('cells','cells_pruned'), json_path)
+    viz_link = None
+    with open(json_path, 'r') as fp:
+        viz_link = boss_util.get_viz_link(json.load(fp))
+    return viz_link
 
 def main():
     config = sys.argv[1]
@@ -230,7 +228,7 @@ def main():
     rmt = BossRemote(config)
     viz_link = detect_cells(rmt, config_p)
     logfile = config_p['Default']['logfile']
-    write_to_logfile('cell_detection viz link: {}'.format(viz_link),logfile)
+    boss_util.write_to_logfile('cell_detection viz link: {}'.format(viz_link),logfile)
 
 
 if __name__ == "__main__":

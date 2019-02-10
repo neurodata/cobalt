@@ -44,10 +44,11 @@ def main():
     #config = sys.argv[1]
     #config_p = configparser.ConfigParser()
     #config_p.read(config)
+    jobs = 16
     save_path = './process_folder'
     config_file = 'neurodata.cfg'
     print("starting parallel process")
-    parallel.run_parallel(config_file, multicore_handler, cpus=10, save_path=save_path)
+    parallel.run_parallel(config_file, multicore_handler, cpus=16, save_path=save_path)
 
 if __name__ == "__main__":
     main()
